@@ -9,6 +9,7 @@ from ..utils import (
     int_or_none,
     js_to_json,
     orderedSet,
+    strftime_or_none,
     strip_jsonp,
     strip_or_none,
     traverse_obj,
@@ -739,25 +740,25 @@ class PBSIE(InfoExtractor):
 
 
 class PBSKidsIE(InfoExtractor):
-    _VALID_URL = r'https?://(?:www\.)?pbskids\.org/video/[\w-]+/(?P<id>\d+)'
+    _VALID_URL = r'https?://(?:www\.)?pbskids\.org/videos/watch/[\w-]+/(?P<id>\d+)'
     _TESTS = [
         {
-            'url': 'https://pbskids.org/video/molly-of-denali/3030407927',
-            'md5': '1ded20a017cc6b53446238f1804ce4c7',
+            'url': 'https://pbskids.org/videos/watch/wild-kratts-creepy-creatures/56212',
+            'md5': '636b34b6ab987bd9d6e8ac642e507dd1',
             'info_dict': {
-                'id': '3030407927',
-                'title': 'Bird in the Hand/Bye-Bye Birdie',
-                'channel': 'molly-of-denali',
-                'duration': 1540,
+                'id': '56212',
+                'title': 'Wild Kratts: Creepy Creatures',
+                'channel': 'wild-kratts',
+                'duration': 2847,
                 'ext': 'mp4',
-                'series': 'Molly of Denali',
-                'description': 'md5:d006b2211633685d8ebc8d03b6d5611e',
-                'categories': ['Episode'],
-                'upload_date': '20190718',
+                'series': 'Wild Kratts',
+                'description': 'md5:5a46d48b289f6e919ae7063ad80a3e31',
+                'categories': ['movie'],
+                'upload_date': '20181108',
             },
         },
         {
-            'url': 'https://pbskids.org/video/plum-landing/2365205059',
+            'url': 'https://pbskids.org/videos/watch/arthur-and-the-haunted-tree-house/26806',
             'md5': '92e5d189851a64ae1d0237a965be71f5',
             'info_dict': {
                 'id': '2365205059',
@@ -776,21 +777,25 @@ class PBSKidsIE(InfoExtractor):
     def _real_extract(self, url):
         video_id = self._match_id(url)
         webpage = self._download_webpage(url, video_id)
-        meta = self._search_json(r'window\._PBS_KIDS_DEEPLINK\s*=', webpage, 'video info', video_id)
+        meta = self._search_json(r'<script id="__NEXT_DATA__" type="application/json">', webpage, 'video info', video_id)
+        videos = traverse_obj(meta, ('props', 'pageProps', 'videoData', 'mediaManagerAsset', 'videos'))
+        video_m3u = None
+        for video in videos:
+            if video.get('profile', '').startswith('hls'):
+                video_m3u = video.get('url')
         formats, subtitles = self._extract_m3u8_formats_and_subtitles(
-            traverse_obj(meta, ('video_obj', 'URI', {url_or_none})), video_id, ext='mp4')
-
+            video_m3u, video_id, ext='mp4')
         return {
             'id': video_id,
             'formats': formats,
             'subtitles': subtitles,
             **traverse_obj(meta, {
-                'categories': ('video_obj', 'video_type', {str}, {lambda x: [x] if x else None}),
-                'channel': ('show_slug', {str}),
-                'description': ('video_obj', 'description', {str}),
-                'duration': ('video_obj', 'duration', {int_or_none}),
-                'series': ('video_obj', 'program_title', {str}),
-                'title': ('video_obj', 'title', {str}),
-                'upload_date': ('video_obj', 'air_date', {unified_strdate}),
+                'categories': ('props', 'pageProps', 'videoData', 'videoType', {str}, {lambda x: [x] if x else None}),
+                'channel': ('props', 'pageProps', 'pageProperty', 'slug', {str}),
+                'description': ('props', 'pageProps', 'videoData', 'mediaManagerAsset', 'description_long', {str}),
+                'duration': ('props', 'pageProps', 'videoData', 'mediaManagerAsset', 'duration', {int_or_none}),
+                'series': ('props', 'pageProps', 'pageProperty', 'title', {str}),
+                'title': ('props', 'pageProps', 'videoData', 'title', {str}),
+                'upload_date': ('props', 'pageProps', 'videoData', 'dateCreated', {int}, {strftime_or_none}, {unified_strdate}),
             }),
         }
